@@ -7,6 +7,9 @@ x-app: &app
     mongo:
       condition: service_healthy
 
+# Shared secret consumers present to the relay. Override in real deployments.
+x-relay-token: &relay-token ${RELAY_AUTH_TOKEN:-local-dev-token}
+
 services:
   mongo:
     image: mongo:7.0
@@ -43,6 +46,11 @@ services:
       PORT: 3000
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   relay:
     <<: *app
@@ -54,8 +62,14 @@ services:
       BATCH_SIZE: 100
       LEASE_MS: 10000
       MAX_ATTEMPTS: 8
+      RELAY_AUTH_TOKEN: *relay-token
     ports:
       - "4000:4000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   consumer:
     <<: *app
@@ -63,9 +77,10 @@ services:
     environment:
       MONGO_URI: mongodb://mongo:27017/billing?replicaSet=rs0
       RELAY_URLS: http://relay:4000
+      RELAY_AUTH_TOKEN: *relay-token
     depends_on:
       relay:
-        condition: service_started
+        condition: service_healthy
 
   # Naive dual-write service, only used for the baseline comparison:
   #   docker compose --profile baseline up naive-api
@@ -77,6 +92,7 @@ services:
       MONGO_URI: mongodb://mongo:27017/naive?replicaSet=rs0
       PORT: 3001
       SOCKET_PORT: 4100
+      RELAY_AUTH_TOKEN: *relay-token
     ports:
       - "3001:3001"
       - "4100:4100"
