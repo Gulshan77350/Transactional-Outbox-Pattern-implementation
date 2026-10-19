@@ -132,6 +132,26 @@ describe('outbox repository', () => {
     });
   });
 
+  describe('dead-letter requeue', () => {
+    it('returns FAILED rows to PENDING with a fresh attempt budget and keeps last_error', async () => {
+      const [failedA, failedB] = await seed(2, { status: OutboxStatus.FAILED, attempts: 8, next_attempt_at: null, last_error: 'boom' });
+      await seed(1, { status: OutboxStatus.SENT });
+
+      const now = new Date();
+      expect(await repo.requeueFailed({ now })).toBe(2);
+      for (const { _id } of [failedA, failedB]) {
+        expect(await outbox.findOne({ _id })).toMatchObject({ status: OutboxStatus.PENDING, attempts: 0, next_attempt_at: now, last_error: 'boom' });
+      }
+      expect(await outbox.countDocuments({ status: OutboxStatus.SENT })).toBe(1);
+    });
+
+    it('can requeue selected events only', async () => {
+      const [a, b] = await seed(2, { status: OutboxStatus.FAILED });
+      expect(await repo.requeueFailed({ ids: [a._id] })).toBe(1);
+      expect(await outbox.findOne({ _id: b._id })).toMatchObject({ status: OutboxStatus.FAILED });
+    });
+  });
+
   it('counts rows by status', async () => {
     await seed(3);
     await seed(1, { status: OutboxStatus.SENT });

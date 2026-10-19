@@ -88,6 +88,19 @@ export function createOutboxRepository(db, { writeConcern = { w: 1 } } = {}) {
     return result.modifiedCount;
   }
 
+  /**
+   * Operator action for dead letters: puts FAILED rows back to PENDING with a
+   * fresh attempt budget, e.g. after the consumer bug that failed them is
+   * fixed. last_error is kept for the audit trail.
+   */
+  async function requeueFailed({ ids, now = new Date() } = {}) {
+    const filter = { status: OutboxStatus.FAILED, ...(ids ? { _id: { $in: ids } } : {}) };
+    const result = await outbox.updateMany(filter, {
+      $set: { status: OutboxStatus.PENDING, attempts: 0, next_attempt_at: now, locked_by: null, locked_until: null },
+    });
+    return result.modifiedCount;
+  }
+
   async function countByStatus() {
     const counts = Object.fromEntries(Object.values(OutboxStatus).map((status) => [status, 0]));
     const rows = await outbox.aggregate([{ $group: { _id: '$status', n: { $sum: 1 } } }]).toArray();
@@ -95,5 +108,5 @@ export function createOutboxRepository(db, { writeConcern = { w: 1 } } = {}) {
     return counts;
   }
 
-  return { claimNext, claimBatch, markSent, markFailed, releaseExpiredLeases, countByStatus };
+  return { claimNext, claimBatch, markSent, markFailed, releaseExpiredLeases, requeueFailed, countByStatus };
 }
