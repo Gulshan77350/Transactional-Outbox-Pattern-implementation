@@ -1,6 +1,6 @@
 # Benchmark results
 
-Generated 2026-10-19T15:57:06.525Z by `npm run bench -- --quick`.
+Generated 2026-10-19T16:16:17.166Z by `npm run bench`.
 
 ## Environment
 
@@ -15,26 +15,27 @@ Generated 2026-10-19T15:57:06.525Z by `npm run bench -- --quick`.
 
 ## Headline numbers
 
-- Write path: **992 orders/sec** sustained (1,000 orders, 50 concurrent connections, 0 errors)
-- Order + outbox transaction latency: **p50 33 ms / p95 61.3 ms / p99 89.9 ms**
-- Outbox lag (commit -> consumer, 100/s steady, 50 ms poll): **p50 283.8 ms / p95 488 ms / p99 521.1 ms**
-- Backlog drain: **178 events/sec** (2,000 events, 2 relay(s)), 0 double-claims across all runs
-- Crash recovery: **927 stranded events delivered in 8.2 s** after relay restart, 0 lost, 100 redeliveries deduplicated
-- At a 1% injected crash rate: naive dual-write lost **14 of 1,000 events (1.4%)**, the outbox lost **0**
+- Write path: **418 orders/sec** sustained at saturation (10,000 orders, 100 concurrent connections, 0 errors, relay + consumer sharing the database)
+- Order + outbox transaction latency at 200 orders/sec: **p50 7.8 ms / p95 10.8 ms / p99 13 ms**
+- Outbox lag (commit -> consumer, 200/s steady, 10 ms poll): **p50 34.6 ms / p95 102.1 ms / p99 151.2 ms**
+- Outbox lag (commit -> consumer, 200/s steady, 50 ms poll): **p50 132.8 ms / p95 258.8 ms / p99 295.3 ms**
+- Backlog drain: **502 events/sec** (50,000 events, 2 relay(s)), 0 double-claims across all runs
+- Crash recovery: **9,555 stranded events delivered in 31.44 s** after relay restart, 0 lost, 100 redeliveries deduplicated
+- At a 1% injected crash rate: naive dual-write lost **107 of 10,000 events (1.07%)**, the outbox lost **0**
 
 ## 1. Write throughput and transaction latency (saturation)
 
-1,000 `POST /orders` over 50 keep-alive connections (closed loop), with the relay and consumer running.
+10,000 `POST /orders` over 100 keep-alive connections (closed loop), with the relay and consumer running against the same MongoDB. Latencies here are dominated by queueing at saturation; see section 2 for latency at a steady rate.
 
 | Throughput | Duration | Errors | Relay caught up after load |
 | --- | --- | --- | --- |
-| 992 orders/sec | 1008.5 ms | 0 | 6749 ms |
+| 418 orders/sec | 23942.9 ms | 0 | 7622.9 ms |
 
 | Metric | p50 | p95 | p99 | max | samples |
 | --- | --- | --- | --- | --- | --- |
-| Order + outbox transaction (server side) | 33 ms | 61.3 ms | 89.9 ms | 97.9 ms | 1,000 |
-| HTTP request (client side) | 46 ms | 78.1 ms | 104.8 ms | 121 ms | 1,000 |
-| Commit -> consumer under saturation | 3589.4 ms | 6214.8 ms | 6650.2 ms | 6655.7 ms | 1,000 |
+| Order + outbox transaction (server side) | 191.5 ms | 226.4 ms | 278.1 ms | 458.2 ms | 10,000 |
+| HTTP request (client side) | 256.3 ms | 296.7 ms | 346.7 ms | 524.1 ms | 10,000 |
+| Commit -> consumer under saturation | 2305.5 ms | 6997.7 ms | 7387 ms | 7598.7 ms | 10,000 |
 
 ## 2. End-to-end outbox lag (steady load)
 
@@ -42,7 +43,20 @@ Time from the order transaction committing (API process) to the consumer receivi
 
 | Poll interval | Rate | Events | p50 | p95 | p99 | max |
 | --- | --- | --- | --- | --- | --- | --- |
-| 50 ms | 100/s | 500 | 283.8 ms | 488 ms | 521.1 ms | 534.5 ms |
+| 10 ms | 200/s | 3,000 | 34.6 ms | 102.1 ms | 151.2 ms | 204.1 ms |
+| 50 ms | 200/s | 3,000 | 132.8 ms | 258.8 ms | 295.3 ms | 323.7 ms |
+| 100 ms | 200/s | 3,000 | 214.6 ms | 279.5 ms | 305.8 ms | 336.2 ms |
+
+Write-path latency during the same steady-load runs:
+
+| Metric | p50 | p95 | p99 | max | samples |
+| --- | --- | --- | --- | --- | --- |
+| Order + outbox transaction (poll 10 ms run) | 9 ms | 32.4 ms | 163.4 ms | 293.6 ms | 3,000 |
+| HTTP request (poll 10 ms run) | 10.8 ms | 44.2 ms | 237.7 ms | 367.3 ms | 3,000 |
+| Order + outbox transaction (poll 50 ms run) | 7.8 ms | 10.8 ms | 13 ms | 19 ms | 3,000 |
+| HTTP request (poll 50 ms run) | 9.5 ms | 12.9 ms | 15.5 ms | 22.6 ms | 3,000 |
+| Order + outbox transaction (poll 100 ms run) | 7.2 ms | 11.3 ms | 22 ms | 56.3 ms | 3,000 |
+| HTTP request (poll 100 ms run) | 9 ms | 13.6 ms | 28.7 ms | 71.5 ms | 3,000 |
 
 ## 3. Backlog drain
 
@@ -50,16 +64,18 @@ N events already PENDING; time until every one is SENT and processed by the cons
 
 | Backlog | Relays | Drain time | Throughput | Total claims | Double claims | Duplicates at consumer |
 | --- | --- | --- | --- | --- | --- | --- |
-| 1,000 | 1 | 8857.8 ms | 113 events/sec | 1,000 | 0 | 0 |
-| 2,000 | 2 | 11240.8 ms | 178 events/sec | 2,000 | 0 | 0 |
+| 1,000 | 1 | 2660.1 ms | 376 events/sec | 1,000 | 0 | 0 |
+| 10,000 | 1 | 23931 ms | 418 events/sec | 10,000 | 0 | 0 |
+| 50,000 | 1 | 131086.9 ms | 381 events/sec | 50,000 | 0 | 0 |
+| 50,000 | 2 | 99596.4 ms | 502 events/sec | 50,000 | 0 | 0 |
 
 ## 4. Crash recovery
 
-The relay is killed after 100 emits (after consumer ack, before mark-as-sent) while 1,000 orders are written. A new relay is then started.
+The relay is killed after 500 emits (after consumer ack, before mark-as-sent) while 10,000 orders are written. A new relay is then started.
 
 | Stranded PENDING | Stranded PROCESSING | Time to deliver all after restart | Recovery rate | Events lost | Duplicates deduplicated |
 | --- | --- | --- | --- | --- | --- |
-| 827 | 100 | 8197.7 ms | 113 events/sec | 0 | 100 |
+| 9,414 | 141 | 31440.6 ms | 304 events/sec | 0 | 100 |
 
 ## 5. Baseline: naive dual-write vs transactional outbox
 
@@ -67,7 +83,7 @@ Same load and the same injected fault: for 1% of events the process "dies" betwe
 
 | Design | Orders | Events delivered | Events lost | Loss rate | Throughput | Request p50 | Request p99 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| naive dual-write | 1,000 | 986 | 14 | 1.4% | 1,031 orders/sec | 38.4 ms | 186.4 ms |
-| transactional outbox | 1,000 | 1,000 | 0 | 0% | 734 orders/sec | 45.6 ms | 314.4 ms |
+| naive dual-write | 10,000 | 9,893 | 107 | 1.07% | 892 orders/sec | 70.8 ms | 93.8 ms |
+| transactional outbox | 10,000 | 10,000 | 0 | 0% | 498 orders/sec | 110 ms | 154.6 ms |
 
 The outbox costs write latency (a multi-document transaction instead of a single insert) in exchange for zero lost events.

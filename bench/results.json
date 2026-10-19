@@ -1,7 +1,7 @@
 {
   "env": {
-    "date": "2026-10-19T16:05:35.837Z",
-    "quick": true,
+    "date": "2026-10-19T16:16:17.166Z",
+    "quick": false,
     "cpu": "13th Gen Intel(R) Core(TM) i7-13650HX",
     "cores": 20,
     "memGb": 16,
@@ -10,13 +10,15 @@
     "mongo": "7.0.45"
   },
   "scale": {
-    "warmup": 100,
-    "throughputOrders": 1000,
-    "concurrency": 50,
-    "e2eRate": 100,
-    "e2eSeconds": 5,
+    "warmup": 500,
+    "throughputOrders": 10000,
+    "concurrency": 100,
+    "e2eRate": 200,
+    "e2eSeconds": 15,
     "pollIntervals": [
-      50
+      10,
+      50,
+      100
     ],
     "backlogTiers": [
       {
@@ -24,22 +26,166 @@
         "relays": 1
       },
       {
-        "events": 2000,
+        "events": 10000,
+        "relays": 1
+      },
+      {
+        "events": 50000,
+        "relays": 1
+      },
+      {
+        "events": 50000,
         "relays": 2
       }
     ],
-    "recoveryOrders": 1000,
-    "crashAfterEmits": 100,
-    "baselineOrders": 1000,
+    "recoveryOrders": 10000,
+    "crashAfterEmits": 500,
+    "baselineOrders": 10000,
     "faultRate": 0.01
   },
   "results": {
+    "throughput": {
+      "orders": 10000,
+      "concurrency": 100,
+      "errors": 0,
+      "durationMs": 23942.8727,
+      "throughput": 417.66082647217183,
+      "requestLatency": {
+        "count": 10000,
+        "mean": 238.87654031999904,
+        "min": 51.17499999999973,
+        "p50": 256.3033000000032,
+        "p95": 296.65759999999955,
+        "p99": 346.73409999999967,
+        "max": 524.1180999999997
+      },
+      "txnLatency": {
+        "count": 10000,
+        "mean": 180.02356167000022,
+        "min": 31.064099999999826,
+        "p50": 191.45620000000054,
+        "p95": 226.40239999999994,
+        "p99": 278.1162000000004,
+        "max": 458.21010000000024
+      },
+      "e2eUnderSaturation": {
+        "count": 10000,
+        "mean": 3174.791637109375,
+        "min": 0.117919921875,
+        "p50": 2305.51220703125,
+        "p95": 6997.728759765625,
+        "p99": 7386.976318359375,
+        "max": 7598.668701171875
+      },
+      "drainAfterLoadMs": 7622.908500000001
+    },
+    "e2e": [
+      {
+        "pollIntervalMs": 10,
+        "ratePerSec": 200,
+        "orders": 3000,
+        "errors": 0,
+        "e2e": {
+          "count": 3000,
+          "mean": 42.64779874674479,
+          "min": -63.9326171875,
+          "p50": 34.563232421875,
+          "p95": 102.139404296875,
+          "p99": 151.245849609375,
+          "max": 204.11279296875
+        },
+        "requestLatency": {
+          "count": 3000,
+          "mean": 19.445984299999985,
+          "min": 5.619199999999182,
+          "p50": 10.794700000000375,
+          "p95": 44.22869999999966,
+          "p99": 237.66949999999997,
+          "max": 367.3077000000003
+        },
+        "txnLatency": {
+          "count": 3000,
+          "mean": 15.450855533333304,
+          "min": 4.587100000000646,
+          "p50": 9.00250000000051,
+          "p95": 32.36550000000034,
+          "p99": 163.4328999999998,
+          "max": 293.59670000000006
+        }
+      },
+      {
+        "pollIntervalMs": 50,
+        "ratePerSec": 200,
+        "orders": 3000,
+        "errors": 0,
+        "e2e": {
+          "count": 3000,
+          "mean": 150.05922281901042,
+          "min": 13.682861328125,
+          "p50": 132.810546875,
+          "p95": 258.812255859375,
+          "p99": 295.298583984375,
+          "max": 323.70458984375
+        },
+        "requestLatency": {
+          "count": 3000,
+          "mean": 9.712022799999998,
+          "min": 4.906699999999546,
+          "p50": 9.496299999998882,
+          "p95": 12.855999999999767,
+          "p99": 15.491399999998976,
+          "max": 22.58589999999822
+        },
+        "txnLatency": {
+          "count": 3000,
+          "mean": 7.956377833333344,
+          "min": 4.01050000000032,
+          "p50": 7.760299999999916,
+          "p95": 10.812000000001717,
+          "p99": 12.97610000000168,
+          "max": 18.97320000000036
+        }
+      },
+      {
+        "pollIntervalMs": 100,
+        "ratePerSec": 200,
+        "orders": 3000,
+        "errors": 0,
+        "e2e": {
+          "count": 3000,
+          "mean": 212.87779809570313,
+          "min": 25.46826171875,
+          "p50": 214.628173828125,
+          "p95": 279.511474609375,
+          "p99": 305.796875,
+          "max": 336.23583984375
+        },
+        "requestLatency": {
+          "count": 3000,
+          "mean": 9.669342366666664,
+          "min": 4.769399999997404,
+          "p50": 8.950400000001537,
+          "p95": 13.622900000002119,
+          "p99": 28.740700000002107,
+          "max": 71.49459999999817
+        },
+        "txnLatency": {
+          "count": 3000,
+          "mean": 7.755953800000007,
+          "min": 3.7735999999999876,
+          "p50": 7.225800000000163,
+          "p95": 11.331699999999728,
+          "p99": 21.97460000000001,
+          "max": 56.272799999998824
+        }
+      }
+    ],
     "backlog": [
       {
         "events": 1000,
         "relays": 1,
-        "drainMs": 3380.5459,
-        "eventsPerSec": 295.8102121908772,
+        "drainMs": 2660.1407000000036,
+        "eventsPerSec": 375.9199654364142,
         "totalClaims": 1000,
         "retriedRows": 0,
         "doubleClaims": 0,
@@ -47,16 +193,87 @@
         "sampleError": null
       },
       {
-        "events": 2000,
+        "events": 10000,
+        "relays": 1,
+        "drainMs": 23931.004799999995,
+        "eventsPerSec": 417.86795345927146,
+        "totalClaims": 10000,
+        "retriedRows": 0,
+        "doubleClaims": 0,
+        "duplicates": 0,
+        "sampleError": null
+      },
+      {
+        "events": 50000,
+        "relays": 1,
+        "drainMs": 131086.8682,
+        "eventsPerSec": 381.42645931333647,
+        "totalClaims": 50000,
+        "retriedRows": 0,
+        "doubleClaims": 0,
+        "duplicates": 0,
+        "sampleError": null
+      },
+      {
+        "events": 50000,
         "relays": 2,
-        "drainMs": 4198.275900000001,
-        "eventsPerSec": 476.3860326568818,
-        "totalClaims": 2000,
+        "drainMs": 99596.42380000002,
+        "eventsPerSec": 502.02605768662136,
+        "totalClaims": 50000,
         "retriedRows": 0,
         "doubleClaims": 0,
         "duplicates": 0,
         "sampleError": null
       }
-    ]
+    ],
+    "recovery": {
+      "orders": 10000,
+      "crashAfterEmits": 500,
+      "relayExitCode": 137,
+      "stuckPending": 9414,
+      "stuckProcessing": 141,
+      "stuckTotal": 9555,
+      "recoveryMs": 31440.638199999987,
+      "recoveryEventsPerSec": 303.9060447570687,
+      "lost": 0,
+      "duplicatesSkipped": 100
+    },
+    "baseline": {
+      "faultRate": 0.01,
+      "naive": {
+        "design": "naive dual-write",
+        "orders": 10000,
+        "eventsDelivered": 9893,
+        "eventsLost": 107,
+        "lossRatePct": 1.0699999999999998,
+        "throughput": 892.3309225645241,
+        "requestLatency": {
+          "count": 10000,
+          "mean": 55.8997012199997,
+          "min": 11.728600000031292,
+          "p50": 70.79389999998966,
+          "p95": 83.49539999995613,
+          "p99": 93.8289999999688,
+          "max": 253.40679999999702
+        }
+      },
+      "outbox": {
+        "design": "transactional outbox",
+        "orders": 10000,
+        "eventsDelivered": 10000,
+        "eventsLost": 0,
+        "lossRatePct": 0,
+        "throughput": 498.23247048769804,
+        "requestLatency": {
+          "count": 10000,
+          "mean": 100.1860491400004,
+          "min": 29.430099999997765,
+          "p50": 110.02470000000903,
+          "p95": 135.26840000000084,
+          "p99": 154.64059999998426,
+          "max": 208.00790000002598
+        }
+      }
+    }
   }
 }
