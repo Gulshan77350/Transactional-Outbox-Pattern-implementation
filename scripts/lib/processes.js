@@ -28,13 +28,19 @@ function printLine(name, line) {
 export async function startService(name, entry, env, { echo = false, readyTimeoutMs = 20_000 } = {}) {
   const child = fork(`${ROOT}${entry}`, [], {
     cwd: ROOT,
+    execArgv: [],
     env: { ...process.env, ...env },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
 
+  const recent = [];
   for (const stream of [child.stdout, child.stderr]) {
     const lines = createInterface({ input: stream });
-    lines.on('line', (line) => echo && printLine(name, line));
+    lines.on('line', (line) => {
+      recent.push(line);
+      if (recent.length > 20) recent.shift();
+      if (echo) printLine(name, line);
+    });
   }
 
   const exited = once(child, 'exit').then(([code, signal]) => ({ code, signal }));
@@ -49,7 +55,7 @@ export async function startService(name, entry, env, { echo = false, readyTimeou
     });
     exited.then(({ code }) => {
       clearTimeout(timer);
-      reject(new Error(`${name} exited with code ${code} before becoming ready`));
+      reject(new Error(`${name} exited with code ${code} before becoming ready:\n${recent.join('\n')}`));
     });
   }).catch((err) => {
     child.kill();
