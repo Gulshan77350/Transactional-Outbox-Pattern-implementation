@@ -1,5 +1,13 @@
+import { timingSafeEqual } from 'node:crypto';
 import { Server } from 'socket.io';
 import { Protocol, roomFor } from '../shared/protocol.js';
+
+function tokensMatch(expected, provided) {
+  if (typeof provided !== 'string') return false;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(provided);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
 
 export class NoSubscribersError extends Error {
   constructor(eventType) {
@@ -8,8 +16,21 @@ export class NoSubscribersError extends Error {
   }
 }
 
-export function createSocketHub({ httpServer, logger }) {
+/**
+ * When authToken is set, consumers must present it in the Socket.IO
+ * handshake (`auth: { token }`). Without it, anyone who can reach the port
+ * could read order events, or subscribe and never ack, which stalls delivery.
+ */
+export function createSocketHub({ httpServer, logger, authToken }) {
   const io = new Server(httpServer, { serveClient: false });
+
+  if (authToken) {
+    io.use((socket, next) => {
+      if (tokensMatch(authToken, socket.handshake.auth?.token)) return next();
+      logger?.warn({ address: socket.handshake.address }, 'rejected consumer with invalid token');
+      return next(new Error('unauthorized'));
+    });
+  }
 
   io.on('connection', (socket) => {
     logger?.info({ socket: socket.id }, 'consumer connected');

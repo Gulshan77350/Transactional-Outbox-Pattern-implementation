@@ -29,7 +29,7 @@ const { client, db } = await connectMongo(config.mongoUri);
 const orders = db.collection('orders');
 
 const socketServer = http.createServer();
-const io = createSocketHub({ httpServer: socketServer, logger });
+const io = createSocketHub({ httpServer: socketServer, logger, authToken: config.relayAuthToken });
 await new Promise((resolve) => socketServer.listen(config.socketPort, resolve));
 
 const app = express();
@@ -70,7 +70,6 @@ app.post('/orders', async (req, res) => {
   });
 });
 
-// eslint-disable-next-line no-unused-vars
 app.use((err, _req, res, _next) => {
   if (err instanceof ValidationError) return res.status(400).json({ error: err.message, details: err.details });
   logger.error({ err }, 'request failed');

@@ -20,7 +20,6 @@ const { client, db } = await connectMongo(config.mongoUri);
 await ensureOutboxIndexes(db);
 const repo = createOutboxRepository(db);
 
-let relay;
 const httpServer = http.createServer(async (req, res) => {
   if (req.url === '/health') {
     res.writeHead(200, { 'content-type': 'application/json' });
@@ -39,8 +38,9 @@ const httpServer = http.createServer(async (req, res) => {
   res.writeHead(404).end();
 });
 
-const io = createSocketHub({ httpServer, logger });
-relay = new OutboxRelay({
+const io = createSocketHub({ httpServer, logger, authToken: config.relayAuthToken });
+if (!config.relayAuthToken) logger.warn('RELAY_AUTH_TOKEN is not set; any client can subscribe to events');
+const relay = new OutboxRelay({
   repo,
   transport: createSocketTransport({ io, ackTimeoutMs: config.relay.ackTimeoutMs }),
   logger,

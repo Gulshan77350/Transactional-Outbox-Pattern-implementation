@@ -22,6 +22,8 @@ export function loadConfig(env = process.env) {
     logLevel: env.LOG_LEVEL || 'info',
     port: int(env, 'PORT', 3000),
     socketPort: int(env, 'SOCKET_PORT', 4000),
+    // Shared secret consumers present to the relay; unset disables the check.
+    relayAuthToken: env.RELAY_AUTH_TOKEN || undefined,
     relay: {
       workerId: env.WORKER_ID || undefined,
       pollIntervalMs: int(env, 'POLL_INTERVAL_MS', 50),

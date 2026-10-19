@@ -16,6 +16,7 @@ const consumer = new BillingConsumer({
   db,
   relayUrls: config.consumer.relayUrls,
   maxConcurrency: config.consumer.concurrency,
+  authToken: config.relayAuthToken,
   logger,
 });
 await consumer.start();

@@ -77,6 +77,11 @@ describe('socket transport', () => {
     await expect(transport.deliver(envelope)).rejects.toThrow();
   });
 
+  it('accepts any client when no auth token is configured', async () => {
+    await subscriber((_evt, ack) => ack({ ok: true }));
+    expect(transport.subscriberCount('OrderCreated')).toBe(1);
+  });
+
   it('tolerates a malformed subscribe request', async () => {
     const socket = connect(url, { transports: ['websocket'] });
     clients.push(socket);
@@ -84,5 +89,42 @@ describe('socket transport', () => {
     expect(await socket.emitWithAck(Protocol.SUBSCRIBE, 'not-an-array')).toEqual({ ok: true, types: [] });
     socket.emit(Protocol.SUBSCRIBE, ['OrderCreated']); // no ack callback
     await eventually(() => transport.subscriberCount('OrderCreated') === 1);
+  });
+});
+
+describe('socket hub authentication', () => {
+  let server;
+  let io;
+  let url;
+  const sockets = [];
+
+  beforeAll(async () => {
+    server = http.createServer();
+    io = createSocketHub({ httpServer: server, logger: silentLogger, authToken: 's3cret' });
+    await new Promise((resolve) => server.listen(0, resolve));
+    url = `http://localhost:${server.address().port}`;
+  });
+  afterEach(() => {
+    for (const socket of sockets.splice(0)) socket.close();
+  });
+  afterAll(() => new Promise((resolve) => io.close(() => resolve())));
+
+  const attempt = (auth) => {
+    const socket = connect(url, { transports: ['websocket'], reconnection: false, auth });
+    sockets.push(socket);
+    return new Promise((resolve) => {
+      socket.on('connect', () => resolve('connected'));
+      socket.on('connect_error', (err) => resolve(err.message));
+    });
+  };
+
+  it('rejects consumers without the token or with a wrong one', async () => {
+    expect(await attempt(undefined)).toBe('unauthorized');
+    expect(await attempt({ token: 'wrong' })).toBe('unauthorized');
+    expect(await attempt({ token: 's3cret-but-longer' })).toBe('unauthorized');
+  });
+
+  it('accepts consumers presenting the token', async () => {
+    expect(await attempt({ token: 's3cret' })).toBe('connected');
   });
 });

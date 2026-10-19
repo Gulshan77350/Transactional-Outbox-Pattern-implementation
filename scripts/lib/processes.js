@@ -5,6 +5,9 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 
+/** Relays and consumers started by the demos and benchmarks share this token. */
+export const LOCAL_RELAY_TOKEN = process.env.RELAY_AUTH_TOKEN ?? 'local-dev-token';
+
 const COLORS = { api: 36, relay: 35, consumer: 32, naive: 33 };
 const DETAIL_KEYS = ['orderId', 'eventId', 'released', 'attempts', 'emits', 'retryInMs', 'err', 'url'];
 
@@ -29,7 +32,7 @@ export async function startService(name, entry, env, { echo = false, readyTimeou
   const child = fork(`${ROOT}${entry}`, [], {
     cwd: ROOT,
     execArgv: [],
-    env: { ...process.env, ...env },
+    env: { ...process.env, RELAY_AUTH_TOKEN: LOCAL_RELAY_TOKEN, ...env },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
 

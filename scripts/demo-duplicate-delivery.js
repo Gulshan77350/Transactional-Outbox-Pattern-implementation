@@ -15,7 +15,7 @@ import { createOrderService } from '../src/orders/order.service.js';
 import { toEnvelope } from '../src/outbox/outbox-event.js';
 import { createSocketHub, createSocketTransport } from '../src/relay/socket-server.js';
 import { check, connectAdmin, dropDatabases, mongoUri, sampleOrder, step, waitFor } from './lib/helpers.js';
-import { startService, stopAll } from './lib/processes.js';
+import { LOCAL_RELAY_TOKEN, startService, stopAll } from './lib/processes.js';
 
 const OUTBOX_DB = 'demo_dup_outbox';
 const BILLING_DB = 'demo_dup_billing';
@@ -27,7 +27,7 @@ const { client, db } = await connectMongo(mongoUri(OUTBOX_DB));
 await ensureOutboxIndexes(db);
 
 const httpServer = http.createServer();
-const io = createSocketHub({ httpServer });
+const io = createSocketHub({ httpServer, authToken: LOCAL_RELAY_TOKEN });
 const transport = createSocketTransport({ io, ackTimeoutMs: 5_000 });
 await new Promise((resolve) => httpServer.listen(PORT, resolve));
 

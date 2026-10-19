@@ -171,3 +171,27 @@ describe('outbox flow (integration)', () => {
     expect(await notificationCount()).toBe(3);
   });
 });
+
+describe('consumer authentication against the relay hub', () => {
+  it('connects and subscribes with the shared token', async () => {
+    const ctx = await openTestDb('auth');
+    const server = http.createServer();
+    const io = createSocketHub({ httpServer: server, logger: silentLogger, authToken: 'tok' });
+    await new Promise((resolve) => server.listen(0, resolve));
+    const transport = createSocketTransport({ io, ackTimeoutMs: 2_000 });
+
+    const consumer = new BillingConsumer({
+      client: ctx.client,
+      db: ctx.db,
+      relayUrls: [`http://localhost:${server.address().port}`],
+      authToken: 'tok',
+      logger: silentLogger,
+    });
+    await consumer.start();
+    expect(transport.subscriberCount('OrderCreated')).toBe(1);
+
+    await consumer.stop();
+    await new Promise((resolve) => io.close(() => resolve()));
+    await ctx.close();
+  });
+});

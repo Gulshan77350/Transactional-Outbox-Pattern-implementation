@@ -13,8 +13,8 @@ import { createIdempotencyStore } from './idempotency-store.js';
 export class BillingConsumer {
   #sockets = [];
 
-  constructor({ client, db, relayUrls, logger, name = 'billing', maxConcurrency = 8, connect = connectSocket }) {
-    Object.assign(this, { relayUrls, logger, name, connect });
+  constructor({ client, db, relayUrls, logger, name = 'billing', maxConcurrency = 8, authToken, connect = connectSocket }) {
+    Object.assign(this, { relayUrls, logger, name, authToken, connect });
     // Bounds in-flight transactions. Unbounded, a 100-event batch becomes 100
     // concurrent transactions whose write conflicts and retries cut
     // throughput in half and push acks past the relay's timeout.
@@ -35,7 +35,11 @@ export class BillingConsumer {
   }
 
   #connect(url) {
-    const socket = this.connect(url, { transports: ['websocket'], reconnectionDelayMax: 2_000 });
+    const socket = this.connect(url, {
+      transports: ['websocket'],
+      reconnectionDelayMax: 2_000,
+      ...(this.authToken ? { auth: { token: this.authToken } } : {}),
+    });
     this.#sockets.push(socket);
 
     socket.on(Protocol.EVENT, async (envelope, ack) => {
@@ -49,6 +53,7 @@ export class BillingConsumer {
       }
     });
     socket.on('disconnect', (reason) => this.logger?.warn({ url, reason }, 'disconnected from relay'));
+    socket.on('connect_error', (err) => this.logger?.warn({ url, err: err.message }, 'cannot connect to relay, retrying'));
 
     // (Re)subscribe on every connect so a relay restart is transparent.
     return new Promise((resolve) => {
