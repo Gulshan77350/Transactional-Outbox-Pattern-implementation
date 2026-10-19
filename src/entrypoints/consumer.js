@@ -11,7 +11,13 @@ const logger = createLogger('consumer', config.logLevel);
 const { client, db } = await connectMongo(config.mongoUri);
 await ensureConsumerIndexes(db);
 
-const consumer = new BillingConsumer({ client, db, relayUrls: config.consumer.relayUrls, logger });
+const consumer = new BillingConsumer({
+  client,
+  db,
+  relayUrls: config.consumer.relayUrls,
+  maxConcurrency: config.consumer.concurrency,
+  logger,
+});
 await consumer.start();
 logger.info({ relays: config.consumer.relayUrls, db: db.databaseName }, 'billing consumer ready');
 signalReady();

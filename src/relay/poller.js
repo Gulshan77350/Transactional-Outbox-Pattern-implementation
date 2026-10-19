@@ -7,6 +7,9 @@ import { toEnvelope } from '../outbox/outbox-event.js';
  * then record the outcome. The loop drains back-to-back while full batches
  * keep coming and only sleeps for pollIntervalMs once the outbox runs dry.
  *
+ * Claiming and delivering are pipelined: while one batch waits for consumer
+ * acks the next one is already being claimed, up to maxInFlightBatches.
+ *
  * Optional hooks exist purely for fault injection in demos and benchmarks:
  *   beforeDeliver(row) -> 'drop' simulates dying before the emit
  *   afterDeliver(row)  can kill the process between emit and mark-as-sent
@@ -24,6 +27,7 @@ export class OutboxRelay {
     workerId = `relay-${hostname()}-${process.pid}`,
     pollIntervalMs = 50,
     batchSize = 100,
+    maxInFlightBatches = 2,
     leaseMs = 10_000,
     leaseSweepIntervalMs = 1_000,
     maxAttempts = 8,
@@ -32,7 +36,16 @@ export class OutboxRelay {
     hooks = {},
   }) {
     Object.assign(this, { repo, transport, logger, workerId, hooks });
-    this.options = { pollIntervalMs, batchSize, leaseMs, leaseSweepIntervalMs, maxAttempts, backoffBaseMs, backoffMaxMs };
+    this.options = {
+      pollIntervalMs,
+      batchSize,
+      maxInFlightBatches,
+      leaseMs,
+      leaseSweepIntervalMs,
+      maxAttempts,
+      backoffBaseMs,
+      backoffMaxMs,
+    };
     this.stats = { claimed: 0, sent: 0, failed: 0, deadLettered: 0, leasesReleased: 0, dropped: 0 };
   }
 
@@ -55,15 +68,22 @@ export class OutboxRelay {
     this.logger?.info({ workerId: this.workerId, stats: this.stats }, 'relay stopped');
   }
 
-  /** One claim -> deliver -> record cycle. Returns how many rows were claimed. */
+  /** One full claim -> deliver -> record cycle. Returns how many rows were claimed. */
   async runOnce(now = new Date()) {
-    await this.#sweepExpiredLeases(now);
+    const batch = await this.#claim(now);
+    if (batch.length > 0) await this.#deliverBatch(batch);
+    return batch.length;
+  }
 
+  async #claim(now) {
+    await this.#sweepExpiredLeases(now);
     const { batchSize, leaseMs } = this.options;
     const batch = await this.repo.claimBatch({ workerId: this.workerId, leaseMs, batchSize, now });
-    if (batch.length === 0) return 0;
     this.stats.claimed += batch.length;
+    return batch;
+  }
 
+  async #deliverBatch(batch) {
     const sentIds = [];
     const failures = [];
     await Promise.all(
@@ -88,7 +108,6 @@ export class OutboxRelay {
     for (const { row, err } of failures) await this.#recordFailure(row, err);
 
     this.logger?.debug({ claimed: batch.length, sent: sentIds.length, failed: failures.length }, 'batch processed');
-    return batch.length;
   }
 
   async #recordFailure(row, err) {
@@ -115,15 +134,25 @@ export class OutboxRelay {
   }
 
   async #run() {
+    const inFlight = new Set();
     while (this.#running) {
       let claimed = 0;
       try {
-        claimed = await this.runOnce();
+        const batch = await this.#claim(new Date());
+        claimed = batch.length;
+        if (claimed > 0) {
+          const delivery = this.#deliverBatch(batch)
+            .catch((err) => this.logger?.error({ err }, 'batch delivery failed'))
+            .finally(() => inFlight.delete(delivery));
+          inFlight.add(delivery);
+        }
       } catch (err) {
         this.logger?.error({ err }, 'relay iteration failed');
       }
+      if (inFlight.size >= this.options.maxInFlightBatches) await Promise.race(inFlight);
       if (claimed < this.options.batchSize) await this.#sleep(this.options.pollIntervalMs);
     }
+    await Promise.all(inFlight);
   }
 
   #sleep(ms) {

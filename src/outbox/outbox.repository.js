@@ -1,7 +1,14 @@
 import { OutboxStatus } from './event-types.js';
 
-export function createOutboxRepository(db) {
-  const outbox = db.collection('outbox');
+/**
+ * Relay bookkeeping writes (claim, mark-sent, mark-failed, lease release)
+ * default to w:1. Losing one of them in a failover only ever means an event
+ * is delivered again, which idempotent consumers already absorb, so they do
+ * not need to wait for majority durability. The producer's order + outbox
+ * transaction is the write that must not be lost, and it keeps w:majority.
+ */
+export function createOutboxRepository(db, { writeConcern = { w: 1 } } = {}) {
+  const outbox = db.collection('outbox', { writeConcern });
 
   /**
    * Atomically moves the oldest due PENDING row to PROCESSING and stamps a
@@ -39,7 +46,7 @@ export function createOutboxRepository(db) {
     const result = await outbox.updateMany(
       { _id: { $in: ids }, status: OutboxStatus.PROCESSING, locked_by: workerId },
       {
-        $set: { status: OutboxStatus.SENT, sent_at: now, locked_by: null, locked_until: null, last_error: null },
+        $set: { status: OutboxStatus.SENT, sent_at: now, locked_by: null, locked_until: null },
       },
     );
     return result.modifiedCount;

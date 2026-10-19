@@ -2,6 +2,7 @@ import { performance } from 'node:perf_hooks';
 import { io as connectSocket } from 'socket.io-client';
 import { EventTypes } from '../outbox/event-types.js';
 import { Protocol } from '../shared/protocol.js';
+import { createSemaphore } from '../shared/semaphore.js';
 import { createIdempotencyStore } from './idempotency-store.js';
 
 /**
@@ -12,8 +13,12 @@ import { createIdempotencyStore } from './idempotency-store.js';
 export class BillingConsumer {
   #sockets = [];
 
-  constructor({ client, db, relayUrls, logger, name = 'billing', connect = connectSocket }) {
+  constructor({ client, db, relayUrls, logger, name = 'billing', maxConcurrency = 8, connect = connectSocket }) {
     Object.assign(this, { relayUrls, logger, name, connect });
+    // Bounds in-flight transactions. Unbounded, a 100-event batch becomes 100
+    // concurrent transactions whose write conflicts and retries cut
+    // throughput in half and push acks past the relay's timeout.
+    this.slots = createSemaphore(maxConcurrency);
     this.store = createIdempotencyStore({ client, db, consumerName: name });
     this.notifications = db.collection('billing_notifications');
     this.stats = { received: 0, processed: 0, duplicates: 0, errors: 0 };
@@ -36,7 +41,7 @@ export class BillingConsumer {
     socket.on(Protocol.EVENT, async (envelope, ack) => {
       const reply = typeof ack === 'function' ? ack : () => {};
       try {
-        reply(await this.handle(envelope));
+        reply(await this.slots.run(() => this.handle(envelope)));
       } catch (err) {
         this.stats.errors += 1;
         this.logger?.error({ err, eventId: envelope?.id }, 'event handling failed');

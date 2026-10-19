@@ -26,6 +26,7 @@ export function loadConfig(env = process.env) {
       workerId: env.WORKER_ID || undefined,
       pollIntervalMs: int(env, 'POLL_INTERVAL_MS', 50),
       batchSize: int(env, 'BATCH_SIZE', 100),
+      maxInFlightBatches: int(env, 'MAX_IN_FLIGHT_BATCHES', 2),
       leaseMs: int(env, 'LEASE_MS', 10_000),
       ackTimeoutMs: int(env, 'ACK_TIMEOUT_MS', 5_000),
       maxAttempts: int(env, 'MAX_ATTEMPTS', 8),
@@ -33,6 +34,7 @@ export function loadConfig(env = process.env) {
       backoffMaxMs: int(env, 'BACKOFF_MAX_MS', 30_000),
     },
     consumer: {
+      concurrency: int(env, 'CONSUMER_CONCURRENCY', 8),
       relayUrls: (env.RELAY_URLS || 'http://localhost:4000')
         .split(',')
         .map((url) => url.trim())
