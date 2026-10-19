@@ -1,0 +1,85 @@
+name: outbox-relay
+
+x-app: &app
+  build: .
+  restart: unless-stopped
+  depends_on:
+    mongo:
+      condition: service_healthy
+
+services:
+  mongo:
+    image: mongo:7.0
+    # Multi-document transactions require a replica set, so even locally we
+    # run a single-node replica set instead of a standalone mongod.
+    command: ["--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      # Initiates the replica set on first boot (no-op afterwards), then only
+      # reports healthy once this node has been elected writable primary.
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - >
+          try { rs.status() } catch (e) {
+            rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] })
+          }
+          quit(db.hello().isWritablePrimary ? 0 : 1)
+      interval: 5s
+      timeout: 10s
+      retries: 30
+      start_period: 10s
+
+  api:
+    <<: *app
+    command: ["node", "src/entrypoints/api.js"]
+    environment:
+      MONGO_URI: mongodb://mongo:27017/outbox?replicaSet=rs0
+      PORT: 3000
+    ports:
+      - "3000:3000"
+
+  relay:
+    <<: *app
+    command: ["node", "src/entrypoints/relay.js"]
+    environment:
+      MONGO_URI: mongodb://mongo:27017/outbox?replicaSet=rs0
+      SOCKET_PORT: 4000
+      POLL_INTERVAL_MS: 50
+      BATCH_SIZE: 100
+      LEASE_MS: 10000
+      MAX_ATTEMPTS: 8
+    ports:
+      - "4000:4000"
+
+  consumer:
+    <<: *app
+    command: ["node", "src/entrypoints/consumer.js"]
+    environment:
+      MONGO_URI: mongodb://mongo:27017/billing?replicaSet=rs0
+      RELAY_URLS: http://relay:4000
+    depends_on:
+      relay:
+        condition: service_started
+
+  # Naive dual-write service, only used for the baseline comparison:
+  #   docker compose --profile baseline up naive-api
+  naive-api:
+    <<: *app
+    profiles: ["baseline"]
+    command: ["node", "src/baseline/naive-api.js"]
+    environment:
+      MONGO_URI: mongodb://mongo:27017/naive?replicaSet=rs0
+      PORT: 3001
+      SOCKET_PORT: 4100
+    ports:
+      - "3001:3001"
+      - "4100:4100"
+
+volumes:
+  mongo-data:
