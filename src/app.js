@@ -12,7 +12,6 @@ export function createApp({ orderService, logger }) {
 
   app.use((_req, res) => res.status(404).json({ error: 'not found' }));
 
-  // eslint-disable-next-line no-unused-vars
   app.use((err, _req, res, _next) => {
     if (err instanceof ValidationError) {
       return res.status(400).json({ error: err.message, details: err.details });
