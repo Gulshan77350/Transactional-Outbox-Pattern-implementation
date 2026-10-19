@@ -1,0 +1,62 @@
+{
+  "env": {
+    "date": "2026-10-19T16:05:35.837Z",
+    "quick": true,
+    "cpu": "13th Gen Intel(R) Core(TM) i7-13650HX",
+    "cores": 20,
+    "memGb": 16,
+    "os": "Windows_NT 10.0.26200 (x64)",
+    "node": "v24.18.0",
+    "mongo": "7.0.45"
+  },
+  "scale": {
+    "warmup": 100,
+    "throughputOrders": 1000,
+    "concurrency": 50,
+    "e2eRate": 100,
+    "e2eSeconds": 5,
+    "pollIntervals": [
+      50
+    ],
+    "backlogTiers": [
+      {
+        "events": 1000,
+        "relays": 1
+      },
+      {
+        "events": 2000,
+        "relays": 2
+      }
+    ],
+    "recoveryOrders": 1000,
+    "crashAfterEmits": 100,
+    "baselineOrders": 1000,
+    "faultRate": 0.01
+  },
+  "results": {
+    "backlog": [
+      {
+        "events": 1000,
+        "relays": 1,
+        "drainMs": 3380.5459,
+        "eventsPerSec": 295.8102121908772,
+        "totalClaims": 1000,
+        "retriedRows": 0,
+        "doubleClaims": 0,
+        "duplicates": 0,
+        "sampleError": null
+      },
+      {
+        "events": 2000,
+        "relays": 2,
+        "drainMs": 4198.275900000001,
+        "eventsPerSec": 476.3860326568818,
+        "totalClaims": 2000,
+        "retriedRows": 0,
+        "doubleClaims": 0,
+        "duplicates": 0,
+        "sampleError": null
+      }
+    ]
+  }
+}
