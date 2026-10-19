@@ -1,7 +1,9 @@
 export async function ensureOutboxIndexes(db) {
   await db.collection('outbox').createIndexes([
     // Serves the claim query: PENDING rows that are due, oldest first.
-    { key: { status: 1, next_attempt_at: 1, created_at: 1 }, name: 'claim_due_pending' },
+    // ESR order (equality, sort, range) so the oldest due row is found by
+    // walking the index instead of sorting every due row in memory.
+    { key: { status: 1, created_at: 1, next_attempt_at: 1 }, name: 'claim_due_pending' },
     // Serves lease recovery: PROCESSING rows whose lease has expired.
     { key: { status: 1, locked_until: 1 }, name: 'expired_leases' },
   ]);
