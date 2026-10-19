@@ -38,14 +38,22 @@ export const resetDbs = (admin, names = [DBS.outbox, DBS.billing]) => dropDataba
 
 export const loadOrders = (opts) => runLoad({ baseUrl: API_URL, makeBody: sampleOrder, ...opts });
 
-/** Waits until `expected` events are SENT in the outbox and processed by the consumer. */
+/**
+ * Waits until `expected` events are SENT in the outbox and processed by the
+ * consumer. The poll has to stay cheap, or it competes with the system it is
+ * timing: estimatedDocumentCount reads collection metadata instead of
+ * scanning, and the SENT count is answered from the status-prefixed index.
+ * The exact count is confirmed once at the end.
+ */
 export async function waitForDelivery(admin, expected, { timeoutMs = 180_000 } = {}) {
   const outbox = admin.db(DBS.outbox).collection('outbox');
   const processed = admin.db(DBS.billing).collection('processed_events');
   await waitFor(
-    async () => (await processed.countDocuments()) >= expected && (await outbox.countDocuments({ status: 'SENT' })) >= expected,
-    { timeoutMs, intervalMs: 20, label: `${expected} events delivered` },
+    async () => (await processed.estimatedDocumentCount()) >= expected && (await outbox.countDocuments({ status: 'SENT' })) >= expected,
+    { timeoutMs, intervalMs: 25, label: `${expected} events delivered` },
   );
+  const exact = await processed.countDocuments();
+  if (exact < expected) throw new Error(`expected ${expected} processed events, found ${exact}`);
 }
 
 /** Commit -> consumer-receipt latency for every successfully created order. */

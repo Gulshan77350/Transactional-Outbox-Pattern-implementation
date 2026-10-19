@@ -7,7 +7,7 @@
  *
  * Requires MongoDB from docker compose:  docker compose up -d mongo
  */
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { connectAdmin } from '../scripts/lib/helpers.js';
 import { renderMarkdown, headline } from './lib/report.js';
@@ -24,6 +24,7 @@ const SCALES = {
     concurrency: 100,
     e2eRate: 200,
     e2eSeconds: 15,
+    e2eRepeats: 3,
     pollIntervals: [10, 50, 100],
     backlogTiers: [
       { events: 1_000, relays: 1 },
@@ -42,6 +43,7 @@ const SCALES = {
     concurrency: 50,
     e2eRate: 100,
     e2eSeconds: 5,
+    e2eRepeats: 1,
     pollIntervals: [50],
     backlogTiers: [
       { events: 1_000, relays: 1 },
@@ -87,9 +89,21 @@ try {
   await admin.close();
 }
 
-await writeFile(new URL('./results.json', import.meta.url), `${JSON.stringify({ env, scale, results }, null, 2)}\n`);
-if (!only) await writeFile(new URL('../RESULTS.md', import.meta.url), renderMarkdown(results, env));
+// A partial run at the same scale updates its scenarios inside the previous
+// full results instead of discarding the rest of the report.
+const resultsFile = new URL('./results.json', import.meta.url);
+let merged = results;
+if (only) {
+  const previous = await readFile(resultsFile, 'utf8').then(JSON.parse, () => null);
+  if (previous && JSON.stringify(previous.scale) === JSON.stringify(scale)) {
+    merged = { ...previous.results, ...results };
+    console.log(`\nmerged ${only.join(', ')} into the previous results from ${previous.env.date}`);
+  }
+}
+
+await writeFile(resultsFile, `${JSON.stringify({ env, scale, results: merged }, null, 2)}\n`);
+await writeFile(new URL('../RESULTS.md', import.meta.url), renderMarkdown(merged, env));
 
 console.log('\n=== Headline numbers ===');
-for (const line of headline(results)) console.log(`- ${line.replaceAll('**', '')}`);
-console.log(only ? '\n(partial run: RESULTS.md not rewritten; see bench/results.json)' : '\nWrote RESULTS.md and bench/results.json');
+for (const line of headline(merged)) console.log(`- ${line.replaceAll('**', '')}`);
+console.log('\nWrote RESULTS.md and bench/results.json');

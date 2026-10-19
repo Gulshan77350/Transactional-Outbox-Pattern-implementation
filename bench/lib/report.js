@@ -11,11 +11,17 @@ export function headline(results) {
   const lines = [];
   const { throughput: t, e2e, backlog, recovery, baseline } = results;
   if (t) {
-    lines.push(`Write path: **${int(t.throughput)} orders/sec** sustained (${int(t.orders)} orders, ${t.concurrency} concurrent connections, ${t.errors} errors)`);
-    lines.push(`Order + outbox transaction latency: **p50 ${ms(t.txnLatency.p50)} / p95 ${ms(t.txnLatency.p95)} / p99 ${ms(t.txnLatency.p99)}**`);
+    lines.push(`Write path: **${int(t.throughput)} orders/sec** sustained at saturation (${int(t.orders)} orders, ${t.concurrency} concurrent connections, ${t.errors} errors, relay + consumer sharing the database)`);
   }
   if (e2e?.length) {
     const best = e2e.find((r) => r.pollIntervalMs === 50) ?? e2e[0];
+    if (best.txnLatency) {
+      lines.push(`Order + outbox transaction latency at ${best.ratePerSec} orders/sec: **p50 ${ms(best.txnLatency.p50)} / p95 ${ms(best.txnLatency.p95)} / p99 ${ms(best.txnLatency.p99)}**`);
+    }
+    const fastest = e2e.reduce((a, b) => (b.e2e.p50 < a.e2e.p50 ? b : a));
+    if (fastest !== best) {
+      lines.push(`Outbox lag (commit -> consumer, ${fastest.ratePerSec}/s steady, ${fastest.pollIntervalMs} ms poll): **p50 ${ms(fastest.e2e.p50)} / p95 ${ms(fastest.e2e.p95)} / p99 ${ms(fastest.e2e.p99)}**`);
+    }
     lines.push(`Outbox lag (commit -> consumer, ${best.ratePerSec}/s steady, ${best.pollIntervalMs} ms poll): **p50 ${ms(best.e2e.p50)} / p95 ${ms(best.e2e.p95)} / p99 ${ms(best.e2e.p99)}**`);
   }
   if (backlog?.length) {
@@ -57,7 +63,11 @@ export function renderMarkdown(results, env) {
   const { throughput: t, e2e, backlog, recovery, baseline } = results;
   if (t) {
     out.push('## 1. Write throughput and transaction latency (saturation)', '');
-    out.push(`${int(t.orders)} \`POST /orders\` over ${t.concurrency} keep-alive connections (closed loop), with the relay and consumer running.`, '');
+    out.push(
+      `${int(t.orders)} \`POST /orders\` over ${t.concurrency} keep-alive connections (closed loop), with the relay and consumer running against the same MongoDB. ` +
+        'Latencies here are dominated by queueing at saturation; see section 2 for latency at a steady rate.',
+      '',
+    );
     out.push(table(['Throughput', 'Duration', 'Errors', 'Relay caught up after load'], [[`${int(t.throughput)} orders/sec`, ms(t.durationMs), t.errors, ms(t.drainAfterLoadMs)]]), '');
     out.push(
       table(LATENCY_HEADERS, [
@@ -71,14 +81,40 @@ export function renderMarkdown(results, env) {
 
   if (e2e?.length) {
     out.push('## 2. End-to-end outbox lag (steady load)', '');
-    out.push('Time from the order transaction committing (API process) to the consumer receiving the event (consumer process), at a fixed arrival rate below saturation.', '');
+    out.push(
+      'Time from the order transaction committing (API process) to the consumer receiving the event (consumer process), at a fixed arrival rate below saturation. ' +
+        `Each row pools ${e2e[0].runs ?? 1} independent runs on a fresh stack.`,
+      '',
+    );
     out.push(
       table(
-        ['Poll interval', 'Rate', 'Events', 'p50', 'p95', 'p99', 'max'],
-        e2e.map((r) => [`${r.pollIntervalMs} ms`, `${r.ratePerSec}/s`, int(r.e2e.count), ms(r.e2e.p50), ms(r.e2e.p95), ms(r.e2e.p99), ms(r.e2e.max)]),
+        ['Poll interval', 'Rate', 'Events', 'p50', 'p95', 'p99', 'max', 'p50 range across runs'],
+        e2e.map((r) => [
+          `${r.pollIntervalMs} ms`,
+          `${r.ratePerSec}/s`,
+          int(r.e2e.count),
+          ms(r.e2e.p50),
+          ms(r.e2e.p95),
+          ms(r.e2e.p99),
+          ms(r.e2e.max),
+          r.e2eP50Range ? `${ms(r.e2eP50Range[0])} - ${ms(r.e2eP50Range[1])}` : 'n/a',
+        ]),
       ),
       '',
     );
+    if (e2e[0].txnLatency) {
+      out.push('Write-path latency during the same steady-load runs:', '');
+      out.push(
+        table(
+          LATENCY_HEADERS,
+          e2e.flatMap((r) => [
+            latencyRow(`Order + outbox transaction (poll ${r.pollIntervalMs} ms runs)`, r.txnLatency),
+            latencyRow(`HTTP request (poll ${r.pollIntervalMs} ms runs)`, r.requestLatency),
+          ]),
+        ),
+        '',
+      );
+    }
   }
 
   if (backlog?.length) {
